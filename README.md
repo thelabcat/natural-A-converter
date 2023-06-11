@@ -1,7 +1,7 @@
 # natural-A-converter
 Natural A music converter v1.0
 
-Converts an entire folder of music from 440Hz A to 432Hz A at a time.
+Converts an entire folder of music from 440Hz A to 432Hz A.
 
 Depends on modules:
 pydub (Pip package)
