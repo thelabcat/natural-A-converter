@@ -1,7 +1,7 @@
 # natural-A-converter
 Natural A music converter v1.0
 
-Converts an entire folder of music from 440Hz A to 432Hz A.
+Converts an entire folder of music from 440Hz A to 432Hz A by slowing it down just a bit.
 
 Depends on modules:
 pydub (Pip package)
@@ -13,6 +13,7 @@ threading (native)
 A simple mass speed changer to convert your music from current industry standart 440Hz A to natural 432Hz A.
 
 How to use:
+
 0) Ensure Python 3 and all dependencies are installed. You will probably have to run 'pip install pydub' but everything else will probably be installed by default.
 1) Download the program, and run it with Python 3.
 2) Enter or browse for an input folder of music (note that the program does not search folders recursively).
