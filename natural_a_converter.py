@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+#Natural A folder converter v1.0
+#S.D.G.
+
+#--Modules--
+import pydub #Audio processing
+import os
+import glob #File listing
+
+#GUI
+from tkinter import *
+from tkinter import filedialog, messagebox, ttk
+
+import threading
+
+
+#--Absolute variables--
+PITCH_CHANGE=432/440 #Pitch change factor
+INFOLDER_DEF=os.getcwd() #Default input folder
+OUTFOLDER_DEF="natural_A_converted" #Default output folder (subfolder of input folder)
+FORMATS=("wav", "mp3", "wma", "m4a", "aac") #Accepted audio formats
+FOLDERPROGRESS_LEN=100 #Length of folder progress bar
+
+class MainWindow(Tk):
+    def __init__(self):
+        """Main converter window"""
+        super(type(self), self).__init__()
+
+        self.build()
+        self.mainloop()
+
+    def build(self):
+        """Construct the GUI"""
+
+        self.title("Natural A Music Converter")
+        self.lockable_buttons=[] #Buttons to lock out during conversion
+
+        #--Subframe with entry fields for folders, and buttons to browse--
+        self.folder_sel_frame=Frame(self)
+        self.folder_sel_frame.grid(row=0, sticky=E+W)
+
+        #Infolder selector
+        self.infolder=StringVar(self, value=INFOLDER_DEF) #Variable for input folder path
+        
+        Label(self.folder_sel_frame, text="In folder:").grid(row=0, column=0, sticky=E)
+        
+        self.infolder_entry=Entry(self.folder_sel_frame, textvariable=self.infolder)
+        self.infolder_entry.grid(row=0, column=1, sticky=N+S+E+W)
+        
+        self.infolder_browse_bttn=Button(self.folder_sel_frame, text="Browse", command=self.browse_infolder)
+        self.infolder_browse_bttn.grid(row=0, column=2, columnspan=2, sticky=E+W)
+        self.lockable_buttons.append(self.infolder_browse_bttn)
+
+        #Outfolder selector
+        self.outfolder=StringVar(self) #Variable for output folder path
+        self.outfolder_to_default()
+        
+        Label(self.folder_sel_frame, text="Out folder:").grid(row=1, column=0, sticky=E)
+        
+        self.outfolder_entry=Entry(self.folder_sel_frame, textvariable=self.outfolder)
+        self.outfolder_entry.grid(row=1, column=1, sticky=N+S+E+W)
+        
+        self.outfolder_browse_bttn=Button(self.folder_sel_frame, text="Browse", command=self.browse_outfolder)
+        self.outfolder_browse_bttn.grid(row=1, column=2)
+        self.lockable_buttons.append(self.outfolder_browse_bttn)
+        
+        self.outfolder_default_bttn=Button(self.folder_sel_frame, text="Default", command=self.outfolder_to_default)
+        self.outfolder_default_bttn.grid(row=1, column=3)
+        self.lockable_buttons.append(self.outfolder_default_bttn)
+
+        self.folder_sel_frame.columnconfigure(1, weight=1) #Set center column (the one with the fields) to expand sideways)
+
+        
+        #--Progress bars--
+        self.folderprogress=ttk.Progressbar(self, orient=HORIZONTAL, length=FOLDERPROGRESS_LEN, mode="determinate")
+        self.folderprogress.grid(row=1, sticky=E+W)
+
+        self.fileprogress=ttk.Progressbar(self, orient=HORIZONTAL, length=3, mode="indeterminate")
+        self.fileprogress.grid(row=2, sticky=E+W)
+
+        #--Status display--
+        self.status=StringVar(self, value="Ready.")
+        Label(self, textvariable=self.status).grid(row=3)
+
+        #--Convert button--
+        self.convert_bttn=Button(self)#, text="Convert", command=self.start_conversion)
+        self.convert_bttn_modeset(True)
+        self.convert_bttn.grid(row=4, sticky=N+S+E+W)
+
+        #--Expansion rules--
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(4, weight=1)
+
+    def convert_bttn_modeset(self, mode):
+        """Set what the convert button does (True is convert, False is cancel)"""
+        if mode:
+            self.convert_bttn["text"]="Convert"
+            self.convert_bttn["command"]=self.start_conversion
+        else:
+            self.convert_bttn["text"]="Cancel"
+            self.convert_bttn["command"]=self.cancel_conversion
+
+    def outfolder_to_default(self):
+        """Default the output folder to a subdirectory of the input folder"""
+        self.outfolder.set(self.infolder.get()+os.sep+OUTFOLDER_DEF)
+
+    def browse_infolder(self):
+        """Browse for input folder"""
+        folder=filedialog.askdirectory(title="Browse for input directory")
+        if folder:
+            self.infolder.set(folder)
+        
+    def browse_outfolder(self):
+        """Browse for output folder"""
+        folder=filedialog.askdirectory(title="Browse for output directory")
+        if folder:
+            self.outfolder.set(folder)
+
+    def start_conversion(self):
+        """Start the conversion process"""
+        #Verify folders
+        if not (self.verify_infolder() and self.verify_outfolder()):
+            return
+
+        #Get files
+        files=[]
+        for fmt in FORMATS:
+            files+=glob.glob(self.infolder.get()+os.sep+"*."+fmt)
+        if not files:
+            messagebox.showerror("No files", "Could not find any files of accepted format in the input folder.\nYou may not have access to this folder.")
+            return
+
+        #Start conversion thread
+        self.converter=FileConverter(self, files, self.outfolder.get())
+        self.converter.start()
+
+    def cancel_conversion(self):
+        """Cancel conversion"""
+        try:
+            self.converter.cancel=True
+        except AttributeError:
+            print("Converter object does not exist, cannot cancel.")
+            return
+        self.convert_bttn["text"]="Cancelling..."
+
+    def able_buttons(self, val):
+        """Set able of all lockable buttons"""
+        val=(DISABLED, NORMAL)[int(val)]
+        for button in self.lockable_buttons:
+            button["state"]=val
+
+    def verify_infolder(self):
+        """Verify the infolder"""
+        return os.path.isdir(self.infolder.get())
+
+    def verify_outfolder(self):
+        """Verify the out folder"""
+        if not os.path.isdir(self.outfolder.get()):
+            if messagebox.askyesno("Output folder nonexistent", "The selected output folder does not exist. Create?"):
+                try:
+                    os.makedirs(self.outfolder.get())
+                    return True
+                except PermissionError:
+                    messagebox.showerror("Permissions error", "Could not create "+seld.outfolder.get()+" due to permissions error.")
+                    self.outfolder_to_default()
+                    return False
+            else:
+                print("Output folder did not exist, auto-creation was declined by user.")
+                return False
+        else: #Folder exists
+            print("Output folder existed, permissions uncertain.")
+            return True
+            
+
+class FileConverter(threading.Thread):
+    def __init__(self, gui, files, outdir):
+        """Convert a list of files to the outdir, and update the gui"""
+        super(type(self), self).__init__()
+        self.gui=gui
+        self.files=files
+        self.outdir=outdir
+        self.cancel=False
+        self.errors=False
+        
+    def run(self):
+        """Thread code"""
+        self.intro()
+        for i in range(len(self.files)):
+            if self.cancel:
+                break
+            inname=self.files[i]
+            name=inname.split(os.sep)[-1]
+            outname=self.outdir+os.sep+name
+            try:
+                self.convert_file(inname, outname, name)
+            except:
+                print("Error converting", inname)
+                self.errors=True
+            self.gui.folderprogress["value"]=int((i+1)/len(self.files)*FOLDERPROGRESS_LEN)
+        self.outro()
+
+    def intro(self):
+        self.gui.able_buttons(False)
+        self.gui.convert_bttn_modeset(False)
+        self.gui.fileprogress.start()
+        self.gui.status.set("Starting...")
+        
+    def outro(self):
+        if self.cancel:
+            messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
+        elif self.errors:
+            messagebox.showerror("Completed with errors", "There were errors when converting one or more files. See log for details.")
+        else:
+            messagebox.showinfo("Operation completed", "Conversion finished successfully.")
+        self.gui.folderprogress["value"]=0
+        self.gui.fileprogress.stop()
+        self.gui.able_buttons(True)
+        self.gui.convert_bttn_modeset(True)
+        self.gui.status.set("Ready.")
+        
+    def convert_file(self, inname, outname, debugname="file"):
+        """Convert one file"""
+        if self.cancel:
+            return
+        self.gui.status.set("Loading "+debugname+"...")
+        music=pydub.AudioSegment.from_file(inname)
+        
+        if self.cancel:
+            return
+        self.gui.status.set("Changing speed of "+debugname+"...")
+        music.frame_rate*=PITCH_CHANGE
+
+        if self.cancel:
+            return
+        self.gui.status.set("Exporting "+debugname+"...")
+        try:
+            music.export(outname, format=outname.split(".")[-1])
+        except PermissionError:
+            messagebox.showerror("Permissions error", "Could not create output file "+outname+" due to permissions error.")
+            self.cancel=True
+        
+MainWindow()
+##print("Making subdirectory")
+##os.system("mkdir -p '%s'" % CONVERTED_DIR)
+##files=glob.glob("*.mp3")+glob.glob("*.wav")+glob.glob("*.wma")
+##
+##for f in files:
+##    print("Loading", f)
+##    music=pydub.AudioSegment.from_file(f)
+##
+##    print("Changing speed")
+##    music.frame_rate*=PITCH_CHANGE
+##
+##    print("Exporting")
+##    music.export(CONVERTED_DIR+os.sep+f, format=f.split(".")[-1])
+##
+##print("Done.")
