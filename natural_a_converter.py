@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
-#Natural A folder converter v1.0
+#Natural A folder converter v1.1
 #S.D.G.
+
+"""
+CHANGELOG:
+
+version 1.1:
+    - Added option for recursive search
+    - Moved file searching to the FileConverter object 
+    - Changed "See log" to "See console"
+version 1.0:
+    - Initial release
+"""
 
 #--Modules--
 import pydub #Audio processing
@@ -25,7 +36,7 @@ class MainWindow(Tk):
     def __init__(self):
         """Main converter window"""
         super(type(self), self).__init__()
-
+        self.converter=None
         self.build()
         self.mainloop()
 
@@ -48,8 +59,13 @@ class MainWindow(Tk):
         self.infolder_entry.grid(row=0, column=1, sticky=N+S+E+W)
         
         self.infolder_browse_bttn=Button(self.folder_sel_frame, text="Browse", command=self.browse_infolder)
-        self.infolder_browse_bttn.grid(row=0, column=2, columnspan=2, sticky=E+W)
+        self.infolder_browse_bttn.grid(row=0, column=2, sticky=E+W)
         self.lockable_buttons.append(self.infolder_browse_bttn)
+
+        self.recursive=BooleanVar(self)
+        self.recursive_checkbttn=Checkbutton(self.folder_sel_frame, text="Recursive", variable=self.recursive)
+        self.recursive_checkbttn.grid(row=0, column=3)
+        self.lockable_buttons.append(self.recursive_checkbttn)
 
         #Outfolder selector
         self.outfolder=StringVar(self) #Variable for output folder path
@@ -122,16 +138,10 @@ class MainWindow(Tk):
         if not (self.verify_infolder() and self.verify_outfolder()):
             return
 
-        #Get files
-        files=[]
-        for fmt in FORMATS:
-            files+=glob.glob(self.infolder.get()+os.sep+"*."+fmt)
-        if not files:
-            messagebox.showerror("No files", "Could not find any files of accepted format in the input folder.\nYou may not have access to this folder.")
-            return
-
         #Start conversion thread
-        self.converter=FileConverter(self, files, self.outfolder.get())
+        if self.converter:
+            self.converter.join()
+        self.converter=FileConverter(self, self.infolder.get(), self.outfolder.get())
         self.converter.start()
 
     def cancel_conversion(self):
@@ -155,6 +165,9 @@ class MainWindow(Tk):
 
     def verify_outfolder(self):
         """Verify the out folder"""
+        while self.outfolder.get()[-1] == os.sep:
+            self.outfolder.set(self.outfolder.get()[:-1])
+            
         if not os.path.isdir(self.outfolder.get()):
             if messagebox.askyesno("Output folder nonexistent", "The selected output folder does not exist. Create?"):
                 try:
@@ -173,11 +186,11 @@ class MainWindow(Tk):
             
 
 class FileConverter(threading.Thread):
-    def __init__(self, gui, files, outdir):
+    def __init__(self, gui, indir, outdir):
         """Convert a list of files to the outdir, and update the gui"""
         super(type(self), self).__init__()
         self.gui=gui
-        self.files=files
+        self.indir=indir
         self.outdir=outdir
         self.cancel=False
         self.errors=False
@@ -185,13 +198,33 @@ class FileConverter(threading.Thread):
     def run(self):
         """Thread code"""
         self.intro()
+        
+        #Get files
+        self.files=[]
+        if self.gui.recursive.get():
+            for file in glob.glob(self.indir+os.sep+"**", recursive=True):
+                for fmt in FORMATS:
+                    if file.endswith("."+fmt):
+                        self.files.append(file)
+            
+        else:
+            for fmt in FORMATS:
+                self.files+=glob.glob(self.indir+os.sep+"*."+fmt)
+                
+        if not self.files:
+            messagebox.showerror("No files", "Could not find any files of accepted format in the input folder.\nYou may not have access to this folder.")
+            self.errors=True
+
+        #Convert all found files
         for i in range(len(self.files)):
             if self.cancel:
                 break
             inname=self.files[i]
             name=inname.split(os.sep)[-1]
-            outname=self.outdir+os.sep+name
+            outname=inname.replace(self.indir, self.outdir, 1)
+            outdir=outname[:-len(name)-len(os.sep)] #Exact outdir per file to preserve recursive structure
             try:
+                os.makedirs(outdir, exist_ok=True)
                 self.convert_file(inname, outname, name)
             except:
                 print("Error converting", inname)
@@ -203,13 +236,13 @@ class FileConverter(threading.Thread):
         self.gui.able_buttons(False)
         self.gui.convert_bttn_modeset(False)
         self.gui.fileprogress.start()
-        self.gui.status.set("Starting...")
+        self.gui.status.set("Searching for files...")
         
     def outro(self):
         if self.cancel:
             messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
         elif self.errors:
-            messagebox.showerror("Completed with errors", "There were errors when converting one or more files. See log for details.")
+            messagebox.showerror("Completed with errors", "There were errors when converting one or more files. See console for details.")
         else:
             messagebox.showinfo("Operation completed", "Conversion finished successfully.")
         self.gui.folderprogress["value"]=0
@@ -239,7 +272,10 @@ class FileConverter(threading.Thread):
             messagebox.showerror("Permissions error", "Could not create output file "+outname+" due to permissions error.")
             self.cancel=True
         
-MainWindow()
+mw=MainWindow()
+if mw.converter:
+    mw.converter.join()
+    
 ##print("Making subdirectory")
 ##os.system("mkdir -p '%s'" % CONVERTED_DIR)
 ##files=glob.glob("*.mp3")+glob.glob("*.wav")+glob.glob("*.wma")
