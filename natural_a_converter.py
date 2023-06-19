@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-#Natural A folder converter v1.1
+#Natural A folder converter v1.2
 #S.D.G.
 
 """
 CHANGELOG:
+
+TO DO:
+    - Have an option to skip certain files based on a string match
+    - Have an option to move error-generating files to their own folder
+
+version 1.2:
+    - Added some formats
+    - Removed wma as a format
+    - Added overwrite block
 
 version 1.1:
     - Added option for recursive search
@@ -29,7 +38,7 @@ import threading
 PITCH_CHANGE=432/440 #Pitch change factor
 INFOLDER_DEF=os.getcwd() #Default input folder
 OUTFOLDER_DEF="natural_A_converted" #Default output folder (subfolder of input folder)
-FORMATS=("wav", "mp3", "wma", "m4a", "aac") #Accepted audio formats
+FORMATS=("wav", "mp3", "m4a", "aac", "ogg", "flac") #Accepted audio formats
 FOLDERPROGRESS_LEN=100 #Length of folder progress bar
 
 class MainWindow(Tk):
@@ -222,6 +231,9 @@ class FileConverter(threading.Thread):
             inname=self.files[i]
             name=inname.split(os.sep)[-1]
             outname=inname.replace(self.indir, self.outdir, 1)
+            if os.path.exists(outname):
+                print(outname, "exists. Skipping.")
+                continue
             outdir=outname[:-len(name)-len(os.sep)] #Exact outdir per file to preserve recursive structure
             try:
                 os.makedirs(outdir, exist_ok=True)
