@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#Natural A folder converter v1.2
+#Natural A folder converter v1.3
 #S.D.G.
 
 """
@@ -8,6 +8,9 @@ CHANGELOG:
 TO DO:
     - Have an option to skip certain files based on a string match
     - Have an option to move error-generating files to their own folder
+
+version 1.3:
+    - Added precise error messages
 
 version 1.2:
     - Added some formats
@@ -202,7 +205,7 @@ class FileConverter(threading.Thread):
         self.indir=indir
         self.outdir=outdir
         self.cancel=False
-        self.errors=False
+        self.errors=[]
         
     def run(self):
         """Thread code"""
@@ -221,8 +224,7 @@ class FileConverter(threading.Thread):
                 self.files+=glob.glob(self.indir+os.sep+"*."+fmt)
                 
         if not self.files:
-            messagebox.showerror("No files", "Could not find any files of accepted format in the input folder.\nYou may not have access to this folder.")
-            self.errors=True
+            self.errors.append("No acceptable files found or permission denied.")
 
         #Convert all found files
         for i in range(len(self.files)):
@@ -238,9 +240,8 @@ class FileConverter(threading.Thread):
             try:
                 os.makedirs(outdir, exist_ok=True)
                 self.convert_file(inname, outname, name)
-            except:
-                print("Error converting", inname)
-                self.errors=True
+            except Exception as e:
+                self.errors.append("When converting "+inname+", "+str(e))
             self.gui.folderprogress["value"]=int((i+1)/len(self.files)*FOLDERPROGRESS_LEN)
         self.outro()
 
@@ -254,7 +255,7 @@ class FileConverter(threading.Thread):
         if self.cancel:
             messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
         elif self.errors:
-            messagebox.showerror("Completed with errors", "There were errors when converting one or more files. See console for details.")
+            messagebox.showerror("Completed with errors", "There were errors when converting one or more files:\n- "+"\n- ".join(self.errors))
         else:
             messagebox.showinfo("Operation completed", "Conversion finished successfully.")
         self.gui.folderprogress["value"]=0
