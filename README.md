@@ -12,6 +12,14 @@ threading (native)
 
 A simple mass speed changer to convert your music from current industry standart 440Hz A to natural 432Hz A.
 
+Currently supported formats:
+- WAV
+- MP3
+- M4A
+- AAC
+- OGG
+- FLAC
+
 How to use:
 
 0) Ensure Python 3 and all dependencies are installed. You will probably have to run 'pip install pydub' but everything else will probably be installed by default.
