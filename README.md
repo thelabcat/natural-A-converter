@@ -1,5 +1,5 @@
 # natural-A-converter
-Natural A music converter v1.1
+Natural A music converter v1.3
 
 Converts an entire folder of music from 440Hz A to 432Hz A by slowing it down just a bit.
 
