@@ -8,6 +8,8 @@ This program depends on the following non-native Python packages:
 
 It also depends on the external program [FFmpeg](https://ffmpeg.org/) for non-WAV audio formats.
 
+A bundled executable with the Python dependencies is available in the releases page of this repository.
+
 Currently known supported formats:
 - WAV
 - MP3
