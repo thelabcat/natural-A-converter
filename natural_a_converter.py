@@ -108,7 +108,7 @@ class MainWindow(Tk):
 
     def outfolder_to_default(self):
         """Default the output folder to a subdirectory of the input folder"""
-        self.outfolder.set(self.infolder.get() + os.sep + OUTFOLDER_DEF)
+        self.outfolder.set(os.path.join(self.infolder.get(), OUTFOLDER_DEF))
 
     def browse_infolder(self):
         """Browse for input folder"""
@@ -194,14 +194,14 @@ class FileConverter(threading.Thread):
         #Get files
         self.files = []
         if self.gui.recursive.get():
-            for fn in glob.glob(self.indir + os.sep + "**", recursive = True):
+            for fn in glob.glob(os.path.join(self.indir, "**"), recursive = True):
                 for fmt in FORMATS:
                     if fn.endswith("." + fmt):
                         self.files.append(fn)
 
         else:
             for fmt in FORMATS:
-                self.files += glob.glob(self.indir + os.sep + "*." + fmt)
+                self.files += glob.glob(os.path.join(self.indir, "*.") + fmt)
 
         if not self.files:
             self.errors.append("No acceptable files found or permission denied.")
