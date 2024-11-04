@@ -3,9 +3,12 @@
 Converts an entire folder of music from 440Hz A to 432Hz A by slowing it down just a bit.
 
 This program depends on the following non-native Python packages:
+[AudioOP-LTS](https://pypi.org/project/audioop-lts/)
 [PyDub](https://pypi.org/project/pydub/)
 
-Currently supported formats:
+It also depends on the external program [FFmpeg](https://ffmpeg.org/) for non-WAV audio formats.
+
+Currently known supported formats:
 - WAV
 - MP3
 - M4A
