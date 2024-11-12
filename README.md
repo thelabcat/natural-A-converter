@@ -10,6 +10,8 @@ It also depends on the external program [FFmpeg](https://ffmpeg.org/) for non-WA
 
 A bundled executable with the Python dependencies is available in the releases page of this repository.
 
+Note: It is currently [a known issue](https://github.com/jiaaro/pydub/issues/586) that the Windows version of PyDub will momentarily open a terminal for every FFmpeg call. I'm not sure how to fix this, except by running the program from the terminal, possibly from the source code.
+
 Currently known supported formats:
 - WAV
 - MP3
