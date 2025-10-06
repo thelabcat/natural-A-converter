@@ -12,12 +12,13 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import mutagen  # Tag handling
+from mutagen import id3
 import pydub  # Audio processing
 
 
 # --Absolute variables--
 PITCH_CHANGE = 432 / 440  # Pitch change factor
-TUNING_TAG = mutagen.id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning") #  The ID3 tag to mark the converted files with
+TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")  # The ID3 tag to mark the converted files with
 INFOLDER_DEF = os.getcwd()  # Default input folder
 OUTFOLDER_DEF = "natural_A_converted"  # Default output folder (subfolder of input folder)
 FORMATS = ("wav", "mp3", "m4a", "aac", "ogg", "flac")  # Accepted audio formats
@@ -227,11 +228,13 @@ class FileConverter(threading.Thread):
             if self.cancel:
                 break
             name = os.path.basename(inname)
-            outname = inname.replace(self.indir, self.outdir, 1)
+            outname = os.path.join(self.outdir, name)
             if os.path.exists(outname):
                 print(outname, "exists. Skipping.")
                 continue
-            file_outdir = os.path.dirname(outname)  # Exact outdir per file to preserve recursive structure
+
+            # Exact outdir per file to preserve recursive structure
+            file_outdir = os.path.dirname(outname)
             try:
                 os.makedirs(file_outdir, exist_ok=True)
                 self.convert_file(inname, outname, name)
@@ -251,6 +254,7 @@ class FileConverter(threading.Thread):
 
     def outro(self):
         """Configure the GUI for having finished the conversion process"""
+        self.gui.fileprogress.stop()
         if self.cancel:
             messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
         elif self.errors:
@@ -258,7 +262,6 @@ class FileConverter(threading.Thread):
         else:
             messagebox.showinfo("Operation completed", "Conversion finished successfully.")
         self.gui.folderprogress["value"] = 0
-        self.gui.fileprogress.stop()
         self.gui.able_buttons(True)
         self.gui.convert_bttn_modeset(True)
         self.gui.status.set("Ready.")
