@@ -8,6 +8,7 @@ S.D.G.
 # --Modules--
 import glob  # File listing
 import os
+from os import path as op
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -116,19 +117,19 @@ class MainWindow(tk.Tk):
 
     def outfolder_to_default(self):
         """Default the output folder to a subdirectory of the input folder"""
-        self.outfolder.set(os.path.join(self.infolder.get(), OUTFOLDER_DEF))
+        self.outfolder.set(op.join(self.infolder.get(), OUTFOLDER_DEF))
 
     def browse_infolder(self):
         """Browse for input folder"""
         folder = filedialog.askdirectory(title="Browse for input directory")
         if folder:
-            self.infolder.set(folder)
+            self.infolder.set(op.abspath(folder))
 
     def browse_outfolder(self):
         """Browse for output folder"""
         folder = filedialog.askdirectory(title="Browse for output directory")
         if folder:
-            self.outfolder.set(folder)
+            self.outfolder.set(op.abspath(folder))
 
     def start_conversion(self):
         """Start the conversion process"""
@@ -163,12 +164,12 @@ class MainWindow(tk.Tk):
 
     def verify_infolder(self):
         """Verify the infolder"""
-        return os.path.isdir(self.infolder.get())
+        return op.isdir(self.infolder.get())
 
     def verify_outfolder(self):
         """Verify the out folder"""
 
-        if not os.path.isdir(self.outfolder.get()):
+        if not op.isdir(self.outfolder.get()):
             if messagebox.askyesno("Output folder nonexistent", "The selected output folder does not exist. Create?"):
                 try:
                     os.makedirs(self.outfolder.get())
@@ -211,14 +212,14 @@ class FileConverter(threading.Thread):
         # Get files
         self.files = []
         if self.gui.recursive.get():
-            for fn in glob.glob(os.path.join(self.indir, "**"), recursive=True):
+            for fn in glob.glob(op.join(self.indir, "**"), recursive=True):
                 for fmt in FORMATS:
                     if fn.endswith("." + fmt):
                         self.files.append(fn)
 
         else:
             for fmt in FORMATS:
-                self.files += glob.glob(os.path.join(self.indir, "*.") + fmt)
+                self.files += glob.glob(op.join(self.indir, "*.") + fmt)
 
         if not self.files:
             self.errors.append("No acceptable files found or permission denied.")
@@ -227,20 +228,20 @@ class FileConverter(threading.Thread):
         for i, inname in enumerate(self.files):
             if self.cancel:
                 break
-            name = os.path.basename(inname)
-            outname = os.path.join(self.outdir, name)
-            if os.path.exists(outname):
+            name = op.basename(inname)
+            outname = op.join(self.outdir, name)
+            if op.exists(outname):
                 print(outname, "exists. Skipping.")
                 continue
 
             # Exact outdir per file to preserve recursive structure
-            file_outdir = os.path.dirname(outname)
+            file_outdir = op.dirname(outname)
             try:
                 os.makedirs(file_outdir, exist_ok=True)
                 self.convert_file(inname, outname, name)
             except Exception as e:
                 self.errors.append(f"When converting `{inname}`, {e}")
-                if os.path.exists(outname):
+                if op.exists(outname):
                     os.remove(outname)
             self.gui.folderprogress["value"] = (i + 1) / len(self.files) * FOLDERPROGRESS_LEN
         self.outro()
