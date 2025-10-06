@@ -9,6 +9,7 @@ S.D.G.
 import glob  # File listing
 import os
 from os import path as op
+import shutil
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -22,7 +23,8 @@ PITCH_CHANGE = 432 / 440  # Pitch change factor
 TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")  # The ID3 tag to mark the converted files with
 INFOLDER_DEF = os.getcwd()  # Default input folder
 OUTFOLDER_DEF = "natural_A_converted"  # Default output folder (subfolder of input folder)
-FORMATS = ("wav", "mp3", "m4a", "aac", "ogg", "flac")  # Accepted audio formats
+HAVE_CODEC_HANDLER = shutil.which("ffmpeg") or shutil.which("avconv")  # Can we handle codecs other than WAV?
+FORMATS = (("wav"), ("wav", "mp3", "m4a", "aac", "ogg", "flac"))[bool(HAVE_CODEC_HANDLER)]  # Accepted audio formats
 FOLDERPROGRESS_LEN = 100  # Length of folder progress bar
 
 
@@ -34,13 +36,21 @@ class MainWindow(tk.Tk):
         super().__init__()
         self.converter = None
         self.build()
+
+        # Check if we have FFmpeg
+        if not HAVE_CODEC_HANDLER:
+            messagebox.showwarning(
+                "FFmpeg not found",
+                "The system did not find FFmpeg (or the LibAV equivalent) " +
+                "on PATH. Program will only convert WAV files."
+                )
         self.mainloop()
 
     def build(self):
         """Construct the GUI"""
 
         self.title("Natural A Music Converter")
-        self.lockable_buttons = []  #Buttons to lock out during conversion
+        self.lockable_buttons = []  # Buttons to lock out during conversion
 
         # --Subframe with entry fields for folders, and buttons to browse--
         self.folder_sel_frame = ttk.Frame(self)
@@ -211,15 +221,10 @@ class FileConverter(threading.Thread):
 
         # Get files
         self.files = []
-        if self.gui.recursive.get():
-            for fn in glob.glob(op.join(self.indir, "**"), recursive=True):
-                for fmt in FORMATS:
-                    if fn.endswith("." + fmt):
-                        self.files.append(fn)
-
-        else:
+        for fn in glob.glob(op.join(self.indir, "**"), recursive=self.gui.recursive.get()):
             for fmt in FORMATS:
-                self.files += glob.glob(op.join(self.indir, "*.") + fmt)
+                if fn.lower().endswith("." + fmt):
+                    self.files.append(fn)
 
         if not self.files:
             self.errors.append("No acceptable files found or permission denied.")
