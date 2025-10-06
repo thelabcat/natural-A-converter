@@ -17,6 +17,7 @@ import pydub  # Audio processing
 
 # --Absolute variables--
 PITCH_CHANGE = 432 / 440  # Pitch change factor
+TUNING_TAG = mutagen.id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning") #  The ID3 tag to mark the converted files with
 INFOLDER_DEF = os.getcwd()  # Default input folder
 OUTFOLDER_DEF = "natural_A_converted"  # Default output folder (subfolder of input folder)
 FORMATS = ("wav", "mp3", "m4a", "aac", "ogg", "flac")  # Accepted audio formats
@@ -291,6 +292,15 @@ class FileConverter(threading.Thread):
                 f"Could not create `{outname}` due to permissions error."
                 )
             self.cancel = True
+            return
+
+        # Copy and control ID3 tags
+        self.gui.status.set(f"Setting ID3 tags of `{debugname}`...")
+        oldtags = mutagen.File(inname)
+        newtags = mutagen.File(outname)
+        newtags.tags = oldtags.tags
+        newtags.tags.add(TUNING_TAG)
+        newtags.save()
 
 
 mw = MainWindow()

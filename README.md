@@ -5,12 +5,15 @@ Converts an entire folder of music from 440Hz A to 432Hz A by slowing it down ju
 This program depends on the following non-native Python packages:
 [AudioOP-LTS](https://pypi.org/project/audioop-lts/)
 [PyDub](https://pypi.org/project/pydub/)
+[Mutagen](https://pypi.org/project/mutagen/)
 
 It also depends on the external program [FFmpeg](https://ffmpeg.org/) for non-WAV audio formats.
 
 A bundled executable with the Python dependencies is available in the releases page of this repository.
 
 Note: It is currently [a known issue](https://github.com/jiaaro/pydub/issues/586) that the Windows version of PyDub will momentarily open a terminal for every FFmpeg call, so I have set the Windows version of my app to just have a terminal open all the time to avoid "popcorn" temrinal windows. Closing this terminal window will close the app as well.
+
+Note: The app will copy over all ID3 tags, but APE and other tagging formats will be discarded. It will also create a new "Tuning": "432 Hz" comment tag and add it to the output file.
 
 Currently known supported formats:
 - WAV
