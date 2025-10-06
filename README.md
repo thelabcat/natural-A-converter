@@ -9,7 +9,7 @@ This program depends on the following non-native Python packages:
 
 It also depends on the external program [FFmpeg](https://ffmpeg.org/) for non-WAV audio formats.
 
-A bundled executable with the Python dependencies is available in the releases page of this repository, but if you plan to convert non-WAV files, you will have to install FFmpeg separately regardless. If you are on Windows, I recommend using [Chocolatey](https://chocolatey.org/) for this. Once Chocolatey is installed, you can [install FFmpeg with it](https://community.chocolatey.org/packages/ffmpeg-full).
+A bundled executable with the Python dependencies is available in the releases page of this repository, but if you plan to convert non-WAV files, you will have to install FFmpeg separately regardless. If you are on Linux, you can probably get it in your package manager.
 
 Note: It is currently [a known issue](https://github.com/jiaaro/pydub/issues/586) that the Windows version of PyDub will momentarily open a terminal for every FFmpeg call, so I have set the Windows version of my app to just have a terminal open all the time to avoid "popcorn" temrinal windows. Closing this terminal window will close the app as well.
 
