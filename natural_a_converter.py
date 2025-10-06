@@ -6,9 +6,9 @@ S.D.G.
 """
 
 # --Modules--
-import glob  # File listing
 import os
 from os import path as op
+from pathlib import Path
 import shutil
 import threading
 import tkinter as tk
@@ -20,11 +20,24 @@ import pydub  # Audio processing
 
 # --Absolute variables--
 PITCH_CHANGE = 432 / 440  # Pitch change factor
-TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")  # The ID3 tag to mark the converted files with
+
+# The ID3 tag to mark the converted files with
+TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")
+
 INFOLDER_DEF = os.getcwd()  # Default input folder
-OUTFOLDER_DEF = "natural_A_converted"  # Default output folder (subfolder of input folder)
-HAVE_CODEC_HANDLER = shutil.which("ffmpeg") or shutil.which("avconv")  # Can we handle codecs other than WAV?
-FORMATS = (("wav"), ("wav", "mp3", "m4a", "aac", "ogg", "flac"))[bool(HAVE_CODEC_HANDLER)]  # Accepted audio formats
+
+# Default output folder (subfolder of input folder)
+OUTFOLDER_DEF = "natural_A_converted"
+
+# Can we handle codecs other than WAV (becomes a str or None)?
+CODEC_HANDLER = shutil.which("ffmpeg") or shutil.which("avconv")
+
+# Accepted audio formats
+FORMATS = (
+    (".wav"),
+    (".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"),
+    )[bool(CODEC_HANDLER)]
+
 FOLDERPROGRESS_LEN = 100  # Length of folder progress bar
 
 
@@ -34,17 +47,44 @@ class MainWindow(tk.Tk):
     def __init__(self):
         """Main converter window"""
         super().__init__()
+
+        # --Variables that the GUI will use--
+        # Variable for input folder path
+        self.__indir = tk.StringVar(self, value=INFOLDER_DEF)
+        # Variable for output folder path
+        self.__outdir = tk.StringVar(self)
+
         self.converter = None
         self.build()
 
         # Check if we have FFmpeg
-        if not HAVE_CODEC_HANDLER:
+        if not CODEC_HANDLER:
             messagebox.showwarning(
                 "FFmpeg not found",
                 "The system did not find FFmpeg (or the LibAV equivalent) " +
                 "on PATH. Program will only convert WAV files."
                 )
         self.mainloop()
+
+    @property
+    def indir(self) -> Path:
+        """The input directory setting"""
+        return Path(op.abspath(self.__indir.get()))
+
+    @indir.setter
+    def indir(self, new: str | Path):
+        """The input directory setting"""
+        self.__indir.set(op.abspath(new))
+
+    @property
+    def outdir(self) -> Path:
+        """The output directory setting"""
+        return Path(op.abspath(self.__outdir.get()))
+
+    @outdir.setter
+    def outdir(self, new: str | Path):
+        """The output directory setting"""
+        self.__outdir.set(op.abspath(new))
 
     def build(self):
         """Construct the GUI"""
@@ -57,16 +97,15 @@ class MainWindow(tk.Tk):
         self.folder_sel_frame.grid(row=0, sticky=tk.EW)
 
         # Infolder selector
-        self.infolder = tk.StringVar(self, value=INFOLDER_DEF)  # Variable for input folder path
 
         ttk.Label(self.folder_sel_frame, text="In folder:").grid(row=0, column=0, sticky=tk.E)
 
-        self.infolder_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.infolder)
-        self.infolder_entry.grid(row=0, column=1, sticky=tk.NSEW)
+        self.indir_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.__indir)
+        self.indir_entry.grid(row=0, column=1, sticky=tk.NSEW)
 
-        self.infolder_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_infolder)
-        self.infolder_browse_bttn.grid(row=0, column=2, sticky=tk.EW)
-        self.lockable_buttons.append(self.infolder_browse_bttn)
+        self.indir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_indir)
+        self.indir_browse_bttn.grid(row=0, column=2, sticky=tk.EW)
+        self.lockable_buttons.append(self.indir_browse_bttn)
 
         self.recursive = tk.BooleanVar(self)
         self.recursive_checkbttn = ttk.Checkbutton(self.folder_sel_frame, text="Recursive", variable=self.recursive)
@@ -74,21 +113,20 @@ class MainWindow(tk.Tk):
         self.lockable_buttons.append(self.recursive_checkbttn)
 
         # Outfolder selector
-        self.outfolder = tk.StringVar(self)  # Variable for output folder path
-        self.outfolder_to_default()
+        self.outdir_to_default()
 
-        ttk.Label(self.folder_sel_frame, text="Out folder:").grid(row=1, column = 0, sticky=tk.E)
+        ttk.Label(self.folder_sel_frame, text="Out folder:").grid(row=1, column=0, sticky=tk.E)
 
-        self.outfolder_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.outfolder)
-        self.outfolder_entry.grid(row=1, column=1, sticky=tk.NSEW)
+        self.outdir_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.__outdir)
+        self.outdir_entry.grid(row=1, column=1, sticky=tk.NSEW)
 
-        self.outfolder_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_outfolder)
-        self.outfolder_browse_bttn.grid(row=1, column=2)
-        self.lockable_buttons.append(self.outfolder_browse_bttn)
+        self.outdir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_outdir)
+        self.outdir_browse_bttn.grid(row=1, column=2)
+        self.lockable_buttons.append(self.outdir_browse_bttn)
 
-        self.outfolder_default_bttn = ttk.Button(self.folder_sel_frame, text="Default", command=self.outfolder_to_default)
-        self.outfolder_default_bttn.grid(row=1, column=3)
-        self.lockable_buttons.append(self.outfolder_default_bttn)
+        self.outdir_default_bttn = ttk.Button(self.folder_sel_frame, text="Default", command=self.outdir_to_default)
+        self.outdir_default_bttn.grid(row=1, column=3)
+        self.lockable_buttons.append(self.outdir_default_bttn)
 
         self.folder_sel_frame.columnconfigure(1, weight=1)  # Set center column (the one with the fields) to expand sideways)
 
@@ -125,32 +163,32 @@ class MainWindow(tk.Tk):
             self.convert_bttn["text"] = "Cancel"
             self.convert_bttn["command"] = self.cancel_conversion
 
-    def outfolder_to_default(self):
+    def outdir_to_default(self):
         """Default the output folder to a subdirectory of the input folder"""
-        self.outfolder.set(op.join(self.infolder.get(), OUTFOLDER_DEF))
+        self.outdir = op.join(self.indir, OUTFOLDER_DEF)
 
-    def browse_infolder(self):
+    def browse_indir(self):
         """Browse for input folder"""
         folder = filedialog.askdirectory(title="Browse for input directory")
         if folder:
-            self.infolder.set(op.abspath(folder))
+            self.indir = folder
 
-    def browse_outfolder(self):
+    def browse_outdir(self):
         """Browse for output folder"""
         folder = filedialog.askdirectory(title="Browse for output directory")
         if folder:
-            self.outfolder.set(op.abspath(folder))
+            self.outdir = folder
 
     def start_conversion(self):
         """Start the conversion process"""
         # Verify folders
-        if not (self.verify_infolder() and self.verify_outfolder()):
+        if not (self.verify_indir() and self.verify_outdir()):
             return
 
         # Start conversion thread
         if self.converter:
             self.converter.join()
-        self.converter = FileConverter(self, self.infolder.get(), self.outfolder.get())
+        self.converter = FileConverter(self, self.indir, self.outdir)
         self.converter.start()
 
     def cancel_conversion(self):
@@ -172,26 +210,32 @@ class MainWindow(tk.Tk):
         for button in self.lockable_buttons:
             button["state"] = val
 
-    def verify_infolder(self):
-        """Verify the infolder"""
-        return op.isdir(self.infolder.get())
+    def verify_indir(self):
+        """Verify the indir"""
+        return self.indir.is_dir()
 
-    def verify_outfolder(self):
+    def verify_outdir(self):
         """Verify the out folder"""
 
-        if not op.isdir(self.outfolder.get()):
+        # The output folder may not exist
+        if not self.outdir.is_dir():
+            # If it doesn't, we must create it
             if messagebox.askyesno("Output folder nonexistent", "The selected output folder does not exist. Create?"):
                 try:
-                    os.makedirs(self.outfolder.get())
+                    os.makedirs(self.outdir)
                     return True
                 except PermissionError:
-                    messagebox.showerror("Permissions error", "Could not create " + self.outfolder.get() + " due to permissions error.")
-                    self.outfolder_to_default()
+                    messagebox.showerror("Permissions error", f"Could not create `{self.outdir}` due to permissions error.")
+                    self.outdir_to_default()
                     return False
+
+            # If the user refuses to create it, we cannot continue
             else:
                 print("Output folder did not exist, auto-creation was declined by user.")
                 return False
-        else:  # Folder exists
+
+        # The folder already exists, we may be good to go
+        else:
             print("Output folder existed, permissions uncertain.")
             return True
 
@@ -199,13 +243,13 @@ class MainWindow(tk.Tk):
 class FileConverter(threading.Thread):
     """Convert a list of files to the outdir, and update the gui"""
 
-    def __init__(self, gui: MainWindow, indir: str, outdir: str):
+    def __init__(self, gui: MainWindow, indir: Path, outdir: Path):
         """Convert a list of files to the outdir, and update the gui.
 
         Args:
             gui (MainWindow): The parent GUI.
-            indir (str): The input directory.
-            outdir (str): The output directory."""
+            indir (Path): The input directory.
+            outdir (Path): The output directory."""
 
         super().__init__(daemon=True)
         self.gui = gui
@@ -221,10 +265,11 @@ class FileConverter(threading.Thread):
 
         # Get files
         self.files = []
-        for fn in glob.glob(op.join(self.indir, "**"), recursive=self.gui.recursive.get()):
-            for fmt in FORMATS:
-                if fn.lower().endswith("." + fmt):
-                    self.files.append(fn)
+        # Scan for all files and folders, optionally digging recursively
+        for fp in self.indir.glob("*" + "*" * self.gui.recursive.get(), recursive_symlinks=True):
+            # If the scanned item is a file, the suffix is a valid format, and it is not already in the output directory
+            if fp.is_file() and fp.suffix.lower() in FORMATS and not fp.is_relative_to(self.outdir):
+                self.files.append(fp)
 
         if not self.files:
             self.errors.append("No acceptable files found or permission denied.")
@@ -233,6 +278,7 @@ class FileConverter(threading.Thread):
         for i, inname in enumerate(self.files):
             if self.cancel:
                 break
+
             name = op.basename(inname)
             outname = op.join(self.outdir, name)
             if op.exists(outname):
@@ -284,6 +330,10 @@ class FileConverter(threading.Thread):
             return
         self.gui.status.set(f"Loading `{debugname}`...")
         music = pydub.AudioSegment.from_file(inname)
+        oldtags = mutagen.File(inname)
+        if TUNING_TAG in oldtags.values():
+            self.errors.append(f"Tags of `{debugname}` say it is already converted.")
+            return
 
         if self.cancel:
             return
@@ -305,7 +355,6 @@ class FileConverter(threading.Thread):
 
         # Copy and control ID3 tags
         self.gui.status.set(f"Setting ID3 tags of `{debugname}`...")
-        oldtags = mutagen.File(inname)
         newtags = mutagen.File(outname)
         newtags.tags = oldtags.tags
         newtags.tags.add(TUNING_TAG)
