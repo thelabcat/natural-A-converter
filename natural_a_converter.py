@@ -266,7 +266,7 @@ class FileConverter(threading.Thread):
         # Get files
         self.files = []
         # Scan for all files and folders, optionally digging recursively
-        for fp in self.indir.glob("*" + "*" * self.gui.recursive.get(), recursive_symlinks=True):
+        for fp in self.indir.glob("*" + "*" * self.gui.recursive.get(), recurse_symlinks=True):
             # If the scanned item is a file, the suffix is a valid format, and it is not already in the output directory
             if fp.is_file() and fp.suffix.lower() in FORMATS and not fp.is_relative_to(self.outdir):
                 self.files.append(fp)
