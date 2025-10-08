@@ -4,7 +4,7 @@
 
 This program converts an entire folder of music from 440Hz A to 432Hz A by slowing it down just a bit.
 
-It runs in Python 3 (officially written in Python 3.13 to be exact) depends on the following non-native Python packages:
+It runs in Python 3 (officially written in Python 3.13 to be exact), and depends on the following non-native Python packages:
 - [AudioOP-LTS](https://pypi.org/project/audioop-lts/)
 - [PyDub](https://pypi.org/project/pydub/)
 - [Mutagen](https://pypi.org/project/mutagen/)
