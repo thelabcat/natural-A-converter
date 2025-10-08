@@ -225,10 +225,24 @@ class MainWindow(tk.Tk):
 
     def verify_indir(self):
         """Verify the indir"""
-        return self.indir.is_dir()
+        if self.indir == self.outdir:
+            messagebox.showerror("Input directory invalid", "Input and output directories must be different.")
+            return False
+        if not self.indir.is_dir():
+            messagebox.showerror("Input directory invalid", "Input directory does not exist.")
+            return False
+        if not os.access(self.indir, os.R_OK):
+            messagebox.showerror("Permissions error", "Input directory is not readable to this user.")
+            return False
+
+        return True
 
     def verify_outdir(self):
         """Verify the out folder"""
+
+        if self.indir == self.outdir:
+            messagebox.showerror("Output directory invalid", "Input and output directories must be different.")
+            return False
 
         # The output folder may not exist
         if not self.outdir.is_dir():
@@ -247,10 +261,12 @@ class MainWindow(tk.Tk):
                 print("Output folder did not exist, auto-creation was declined by user.")
                 return False
 
-        # The folder already exists, we may be good to go
-        else:
-            print("Output folder existed, permissions uncertain.")
-            return True
+        # The folder already exists, but we cannot write to it
+        if not os.access(self.outdir, os.W_OK):
+            messagebox.showerror("Permissions error", "Output directory is not writeable to this user.")
+            return False
+
+        return True
 
 
 class FileConverter(threading.Thread):
@@ -269,7 +285,9 @@ class FileConverter(threading.Thread):
         self.indir = indir
         self.outdir = outdir
         self.cancel = False
-        self.errors = []
+        self.fails = 0
+        self.skips = 0
+        self.completions = 0
         self.files = []
 
     def run(self):
@@ -284,8 +302,7 @@ class FileConverter(threading.Thread):
             if fp.is_file() and fp.suffix.lower() in FORMATS and not fp.is_relative_to(self.outdir):
                 self.files.append(fp)
 
-        if not self.files:
-            self.errors.append("No acceptable files found or permission denied.")
+        print(f"Found {len(self.files):,} total files.")
 
         # Convert all found files
         for i, inname in enumerate(self.files):
@@ -296,6 +313,7 @@ class FileConverter(threading.Thread):
             outname = op.join(self.outdir, name)
             if op.exists(outname):
                 print(outname, "exists. Skipping.")
+                self.skips += 1
                 continue
 
             # Exact outdir per file to preserve recursive structure
@@ -304,7 +322,8 @@ class FileConverter(threading.Thread):
                 os.makedirs(file_outdir, exist_ok=True)
                 self.convert_file(inname, outname, name)
             except Exception as e:
-                self.errors.append(f"When converting `{inname}`, {e}")
+                print(f"Error when converting `{inname}`: {repr(e)}")
+                self.fails += 1
                 if op.exists(outname):
                     os.remove(outname)
             self.gui.folderprogress["value"] = (i + 1) / len(self.files) * FOLDERPROGRESS_LEN
@@ -322,10 +341,16 @@ class FileConverter(threading.Thread):
         self.gui.fileprogress.stop()
         if self.cancel:
             messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
-        elif self.errors:
-            messagebox.showerror("Completed with errors", "There were errors when converting one or more files:\n- " + "\n- ".join(self.errors))
-        else:
-            messagebox.showinfo("Operation completed", "Conversion finished successfully.")
+        elif not self.files:
+            messagebox.showerror("No files found", "No supported formats at the input location.")
+        elif len(self.files) == self.skips:
+            messagebox.showerror("All files already converted", "All found files already existed at the output location or were tagged as converted.")
+        elif self.skips:
+            messagebox.showwarning("Some files already converted", f"{self.skips:,} found files  already existed at the output location or were tagged as converted.")
+        if self.fails:
+            messagebox.showerror("Completed with errors", f"{self.fails:,} files failed to convert. See console output for more info.")
+        if self.completions:
+            messagebox.showinfo("Operation completed", f"Conversion of {self.completions:,} files finished successfully.")
         self.gui.folderprogress["value"] = 0
         self.gui.able_buttons(True)
         self.gui.convert_bttn_modeset(True)
@@ -345,7 +370,8 @@ class FileConverter(threading.Thread):
         music = pydub.AudioSegment.from_file(inname)
         oldtags = mutagen.File(inname)
         if TUNING_TAG in oldtags.values():
-            self.errors.append(f"Tags of `{debugname}` say it is already converted.")
+            print(f"Tags of `{inname}` say it is already converted.")
+            self.skips += 1
             return
 
         if self.cancel:
@@ -356,15 +382,7 @@ class FileConverter(threading.Thread):
         if self.cancel:
             return
         self.gui.status.set(f"Exporting `{debugname}`...")
-        try:
-            music.export(outname, format=outname.split(".")[-1])
-        except PermissionError:
-            messagebox.showerror(
-                "Permissions error",
-                f"Could not create `{outname}` due to permissions error."
-                )
-            self.cancel = True
-            return
+        music.export(outname, format=outname.split(".")[-1])
 
         # Copy and control ID3 tags
         self.gui.status.set(f"Setting ID3 tags of `{debugname}`...")
@@ -372,6 +390,9 @@ class FileConverter(threading.Thread):
         newtags.tags = oldtags.tags
         newtags.tags.add(TUNING_TAG)
         newtags.save()
+
+        # Converting the file is finished
+        self.completions += 1
 
 
 mw = MainWindow()
