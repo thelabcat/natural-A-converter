@@ -69,11 +69,18 @@ class MainWindow(tk.Tk):
         self.__indir = tk.StringVar(self, value=INFOLDER_DEF)
         # Variable for output folder path
         self.__outdir = tk.StringVar(self)
+        # The status display
+        self.__status = tk.StringVar(self, value="Ready.")
+
+        # Status and folder progress queues for thread safety
+        self.status_updates = Queue()
+        self.folderprogress_updates = Queue()
 
         self.converter = None
-        self.progress_updates = Queue()
         self.build()
-        self.progress_tick()
+
+        # Start the status and folder progress ticking loop
+        self.status_tick()
 
         # Check if we have FFmpeg
         if not CODEC_HANDLER:
@@ -156,8 +163,7 @@ class MainWindow(tk.Tk):
         self.fileprogress.grid(row=2, sticky=tk.EW)
 
         # --Status display--
-        self.status = tk.StringVar(self, value="Ready.")
-        ttk.Label(self, textvariable=self.status).grid(row=3)
+        ttk.Label(self, textvariable=self.__status).grid(row=3)
 
         # --Convert button--
         self.convert_bttn = ttk.Button(self)  # , text = "Convert", command = self.start_conversion)
@@ -197,23 +203,30 @@ class MainWindow(tk.Tk):
         if folder:
             self.outdir = folder
 
-    def progress_tick(self):
-        """Constantly update the progress bar with an after timer"""
+    def status_tick(self):
+        """Constantly update the status display and progress bar with an after timer"""
+
         # Allow for no updates
-        val = None
+        stat_val = None
+        fp_val = None
 
         # Clear backlog of updates
-        while not self.progress_updates.empty():
-            val = self.progress_updates.get()
+        while not self.status_updates.empty():
+            stat_val = self.status_updates.get()
 
-        if val is None:
-            return
+        while not self.folderprogress_updates.empty():
+            fp_val = self.folderprogress_updates.get()
 
-        # TODO: Shouldn't this be a variable?
-        self.gui.folderprogress["value"] = val
+        # Do the updates
+        if stat_val is not None:
+            self.__status.set(stat_val)
+
+        if fp_val is not None:
+            # TODO: Shouldn't this be a variable?
+            self.folderprogress["value"] = fp_val
 
         # Continue the loop
-        self.after(TK_TIMER_WAIT, self.progress_tick)
+        self.after(TK_TIMER_WAIT, self.status_tick)
 
     def start_conversion(self):
         """Start the conversion process"""
@@ -226,12 +239,12 @@ class MainWindow(tk.Tk):
             self.converter.join()
 
         # Configure the GUI for conversion status
-        self.gui.set_enabled(False)
-        self.gui.convert_bttn_modeset(False)
-        self.gui.fileprogress.start()
+        self.set_enabled(False)
+        self.convert_bttn_modeset(False)
+        self.fileprogress.start()
 
         # Start the new thread
-        self.converter = FileConverter(self, self.indir, self.outdir)
+        self.converter = FileConverter(self, self.indir, self.outdir, self.recursive.get())
         self.converter.start()
 
         # Wait for it to finish, then reconfigure the GUI
@@ -249,7 +262,7 @@ class MainWindow(tk.Tk):
     def wait_for_conversion_then_outro(self):
         """Tick until the converter is done, then re-enable the GUI"""
         if self.converter.is_alive():
-            self.after(TK_TIMER_WAIT, self.wait_to_enable_tick)
+            self.after(TK_TIMER_WAIT, self.wait_for_conversion_then_outro)
             return
 
         self.fileprogress.stop()
@@ -268,7 +281,7 @@ class MainWindow(tk.Tk):
         if self.converter.completions:
             messagebox.showinfo("Operation completed", f"Conversion of {self.converter.completions:,} files finished successfully.")
 
-        self.status.set("Ready.")
+        self.status_updates.put("Ready.")
         self.set_enabled(True)
         self.convert_bttn_modeset(True)
 
@@ -331,7 +344,7 @@ class MainWindow(tk.Tk):
 class FileConverter(threading.Thread):
     """Convert a list of files to the outdir, and update the gui"""
 
-    def __init__(self, gui: MainWindow, indir: Path, outdir: Path):
+    def __init__(self, gui: MainWindow, indir: Path, outdir: Path, recursive: bool):
         """Convert a list of files to the outdir, and update the gui.
 
         Args:
@@ -343,6 +356,8 @@ class FileConverter(threading.Thread):
         self.gui = gui
         self.indir = indir
         self.outdir = outdir
+        self.recursive = recursive
+
         self.cancel = False
         self.fails = 0
         self.skips = 0
@@ -351,12 +366,12 @@ class FileConverter(threading.Thread):
 
     def run(self):
         """Thread code"""
-        self.gui.status.set("Searching for files...")
+        self.gui.status_updates.put("Searching for files...")
 
         # Get files
         self.files = []
         # Scan for all files and folders, optionally digging recursively
-        for fp in self.indir.glob("*" + "*" * self.gui.recursive.get(), recurse_symlinks=True):
+        for fp in self.indir.glob("*" + "*" * self.recursive, recurse_symlinks=True):
             # If the scanned item is a file, the suffix is a valid format, and it is not already in the output directory
             if fp.is_file() and fp.suffix.lower() in FORMATS and not fp.is_relative_to(self.outdir):
                 self.files.append(fp)
@@ -385,7 +400,7 @@ class FileConverter(threading.Thread):
                 self.fails += 1
                 if op.exists(outname):
                     os.remove(outname)
-            self.gui.progress_updates.put((i + 1) / len(self.files) * FOLDERPROGRESS_LEN)
+            self.gui.folderprogress_updates.put((i + 1) / len(self.files) * FOLDERPROGRESS_LEN)
 
     def convert_file(self, inname, outname, debugname="file"):
         """Convert one file
@@ -393,11 +408,13 @@ class FileConverter(threading.Thread):
         Args:
             inname (str): The full path to the input file.
             outname (str): The full path to the output file.
-            debugname (str): What to call the file in the GUI."""
+            debugname (str): What to call the file in the GUI.
+                Defaults to "file".
+        """
 
         if self.cancel:
             return
-        self.gui.status.set(f"Loading `{debugname}`...")
+        self.gui.status_updates.put(f"Loading `{debugname}`...")
         music = pydub.AudioSegment.from_file(inname)
         oldtags = mutagen.File(inname)
         if TUNING_TAG in oldtags.values():
@@ -407,16 +424,16 @@ class FileConverter(threading.Thread):
 
         if self.cancel:
             return
-        self.gui.status.set(f"Changing speed of `{debugname}`...")
+        self.gui.status_updates.put(f"Changing speed of `{debugname}`...")
         music.frame_rate *= PITCH_CHANGE
 
         if self.cancel:
             return
-        self.gui.status.set(f"Exporting `{debugname}`...")
+        self.gui.status_updates.put(f"Exporting `{debugname}`...")
         music.export(outname, format=outname.split(".")[-1])
 
         # Copy and control ID3 tags
-        self.gui.status.set(f"Setting ID3 tags of `{debugname}`...")
+        self.gui.status_updates.put(f"Setting ID3 tags of `{debugname}`...")
         newtags = mutagen.File(outname)
         newtags.tags = oldtags.tags
         newtags.tags.add(TUNING_TAG)
