@@ -383,8 +383,12 @@ class FileConverter(threading.Thread):
             if self.cancel:
                 break
 
+            # Get just the base filename for debug
             name = op.basename(inname)
-            outname = op.join(self.outdir, name)
+
+            # Use the relative location of the input file within the input directory
+            # for its new relative location in the output directory
+            outname = self.outdir / inname.relative_to(self.indir)
             if op.exists(outname):
                 print(outname, "exists. Skipping.")
                 self.skips += 1
@@ -402,12 +406,12 @@ class FileConverter(threading.Thread):
                     os.remove(outname)
             self.gui.folderprogress_updates.put((i + 1) / len(self.files) * FOLDERPROGRESS_LEN)
 
-    def convert_file(self, inname, outname, debugname="file"):
+    def convert_file(self, inname: Path, outname: Path, debugname: str="file"):
         """Convert one file
 
         Args:
-            inname (str): The full path to the input file.
-            outname (str): The full path to the output file.
+            inname (Path): The full path to the input file.
+            outname (Path): The full path to the output file.
             debugname (str): What to call the file in the GUI.
                 Defaults to "file".
         """
@@ -430,7 +434,7 @@ class FileConverter(threading.Thread):
         if self.cancel:
             return
         self.gui.status_updates.put(f"Exporting `{debugname}`...")
-        music.export(outname, format=outname.split(".")[-1])
+        music.export(outname, format=outname.suffix.removeprefix("."))
 
         # Copy and control ID3 tags
         self.gui.status_updates.put(f"Setting ID3 tags of `{debugname}`...")
