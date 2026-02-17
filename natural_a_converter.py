@@ -22,6 +22,7 @@ S.D.G.
 import os
 from os import path as op
 from pathlib import Path
+from queue import Queue
 import shutil
 import threading
 import tkinter as tk
@@ -53,6 +54,8 @@ FORMATS = (
 
 FOLDERPROGRESS_LEN = 100  # Length of folder progress bar
 
+TK_TIMER_WAIT = 100  # How long to set Tk after timers for
+
 
 class MainWindow(tk.Tk):
     """Main converter window"""
@@ -68,7 +71,9 @@ class MainWindow(tk.Tk):
         self.__outdir = tk.StringVar(self)
 
         self.converter = None
+        self.progress_updates = Queue()
         self.build()
+        self.progress_tick()
 
         # Check if we have FFmpeg
         if not CODEC_HANDLER:
@@ -103,7 +108,7 @@ class MainWindow(tk.Tk):
         """Construct the GUI"""
 
         self.title("Natural A Music Converter")
-        self.lockable_buttons = []  # Buttons to lock out during conversion
+        self.lockable_widgets = []  # Buttons to lock out during conversion
 
         # --Subframe with entry fields for folders, and buttons to browse--
         self.folder_sel_frame = ttk.Frame(self)
@@ -118,12 +123,12 @@ class MainWindow(tk.Tk):
 
         self.indir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_indir)
         self.indir_browse_bttn.grid(row=0, column=2, sticky=tk.EW)
-        self.lockable_buttons.append(self.indir_browse_bttn)
+        self.lockable_widgets.append(self.indir_browse_bttn)
 
         self.recursive = tk.BooleanVar(self)
         self.recursive_checkbttn = ttk.Checkbutton(self.folder_sel_frame, text="Recursive", variable=self.recursive)
         self.recursive_checkbttn.grid(row=0, column=3)
-        self.lockable_buttons.append(self.recursive_checkbttn)
+        self.lockable_widgets.append(self.recursive_checkbttn)
 
         # Outfolder selector
         self.outdir_to_default()
@@ -135,11 +140,11 @@ class MainWindow(tk.Tk):
 
         self.outdir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_outdir)
         self.outdir_browse_bttn.grid(row=1, column=2)
-        self.lockable_buttons.append(self.outdir_browse_bttn)
+        self.lockable_widgets.append(self.outdir_browse_bttn)
 
         self.outdir_default_bttn = ttk.Button(self.folder_sel_frame, text="Default", command=self.outdir_to_default)
         self.outdir_default_bttn.grid(row=1, column=3)
-        self.lockable_buttons.append(self.outdir_default_bttn)
+        self.lockable_widgets.append(self.outdir_default_bttn)
 
         self.folder_sel_frame.columnconfigure(1, weight=1)  # Set center column (the one with the fields) to expand sideways)
 
@@ -192,17 +197,45 @@ class MainWindow(tk.Tk):
         if folder:
             self.outdir = folder
 
+    def progress_tick(self):
+        """Constantly update the progress bar with an after timer"""
+        # Allow for no updates
+        val = None
+
+        # Clear backlog of updates
+        while not self.progress_updates.empty():
+            val = self.progress_updates.get()
+
+        if val is None:
+            return
+
+        # TODO: Shouldn't this be a variable?
+        self.gui.folderprogress["value"] = val
+
+        # Continue the loop
+        self.after(TK_TIMER_WAIT, self.progress_tick)
+
     def start_conversion(self):
         """Start the conversion process"""
         # Verify folders
         if not (self.verify_indir() and self.verify_outdir()):
             return
 
-        # Start conversion thread
+        # Get rid of old conversion thread
         if self.converter:
             self.converter.join()
+
+        # Configure the GUI for conversion status
+        self.gui.set_enabled(False)
+        self.gui.convert_bttn_modeset(False)
+        self.gui.fileprogress.start()
+
+        # Start the new thread
         self.converter = FileConverter(self, self.indir, self.outdir)
         self.converter.start()
+
+        # Wait for it to finish, then reconfigure the GUI
+        self.wait_for_conversion_then_outro()
 
     def cancel_conversion(self):
         """Cancel conversion"""
@@ -213,14 +246,40 @@ class MainWindow(tk.Tk):
             return
         self.convert_bttn["text"] = "Cancelling..."
 
-    def able_buttons(self, val: bool):
+    def wait_for_conversion_then_outro(self):
+        """Tick until the converter is done, then re-enable the GUI"""
+        if self.converter.is_alive():
+            self.after(TK_TIMER_WAIT, self.wait_to_enable_tick)
+            return
+
+        self.fileprogress.stop()
+
+        # Give info from the conversion thread memory
+        if self.converter.cancel:
+            messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
+        elif not self.converter.files:
+            messagebox.showerror("No files found", "No supported formats at the input location.")
+        elif len(self.converter.files) == self.converter.skips:
+            messagebox.showerror("All files already converted", "All found files already existed at the output location or were tagged as converted.")
+        elif self.converter.skips:
+            messagebox.showwarning("Some files already converted", f"{self.converter.skips:,} found files  already existed at the output location or were tagged as converted.")
+        if self.converter.fails:
+            messagebox.showerror("Completed with errors", f"{self.converter.fails:,} files failed to convert. See console output for more info.")
+        if self.converter.completions:
+            messagebox.showinfo("Operation completed", f"Conversion of {self.converter.completions:,} files finished successfully.")
+
+        self.status.set("Ready.")
+        self.set_enabled(True)
+        self.convert_bttn_modeset(True)
+
+    def set_enabled(self, val: bool):
         """Set able of all lockable buttons
 
         Args:
             val (bool): True is enable, False is disable."""
 
         val = (tk.DISABLED, tk.NORMAL)[val]
-        for button in self.lockable_buttons:
+        for button in self.lockable_widgets:
             button["state"] = val
 
     def verify_indir(self):
@@ -292,7 +351,7 @@ class FileConverter(threading.Thread):
 
     def run(self):
         """Thread code"""
-        self.intro()
+        self.gui.status.set("Searching for files...")
 
         # Get files
         self.files = []
@@ -326,35 +385,7 @@ class FileConverter(threading.Thread):
                 self.fails += 1
                 if op.exists(outname):
                     os.remove(outname)
-            self.gui.folderprogress["value"] = (i + 1) / len(self.files) * FOLDERPROGRESS_LEN
-        self.outro()
-
-    def intro(self):
-        """Configure the GUI for the conversion process"""
-        self.gui.able_buttons(False)
-        self.gui.convert_bttn_modeset(False)
-        self.gui.fileprogress.start()
-        self.gui.status.set("Searching for files...")
-
-    def outro(self):
-        """Configure the GUI for having finished the conversion process"""
-        self.gui.fileprogress.stop()
-        if self.cancel:
-            messagebox.showinfo("Operation cancelled", "You cancelled the operation.")
-        elif not self.files:
-            messagebox.showerror("No files found", "No supported formats at the input location.")
-        elif len(self.files) == self.skips:
-            messagebox.showerror("All files already converted", "All found files already existed at the output location or were tagged as converted.")
-        elif self.skips:
-            messagebox.showwarning("Some files already converted", f"{self.skips:,} found files  already existed at the output location or were tagged as converted.")
-        if self.fails:
-            messagebox.showerror("Completed with errors", f"{self.fails:,} files failed to convert. See console output for more info.")
-        if self.completions:
-            messagebox.showinfo("Operation completed", f"Conversion of {self.completions:,} files finished successfully.")
-        self.gui.folderprogress["value"] = 0
-        self.gui.able_buttons(True)
-        self.gui.convert_bttn_modeset(True)
-        self.gui.status.set("Ready.")
+            self.gui.progress_updates.put((i + 1) / len(self.files) * FOLDERPROGRESS_LEN)
 
     def convert_file(self, inname, outname, debugname="file"):
         """Convert one file
