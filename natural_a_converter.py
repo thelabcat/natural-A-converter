@@ -56,6 +56,8 @@ FOLDERPROGRESS_LEN = 100  # Length of folder progress bar
 
 TK_TIMER_WAIT = 100  # How long to set Tk after timers for
 
+GUI_PAD = 5  # How much to pad widgets
+
 
 class MainWindow(tk.Tk):
     """Main converter window"""
@@ -115,64 +117,86 @@ class MainWindow(tk.Tk):
         """Construct the GUI"""
 
         self.title("Natural A Music Converter")
-        self.lockable_widgets = []  # Buttons to lock out during conversion
+        self.lockable_widgets = []  # Widgets to lock out during conversion
+
+        # Master frame
+        self.frame = ttk.Frame(self)
+        self.frame.grid(sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
 
         # --Subframe with entry fields for folders, and buttons to browse--
-        self.folder_sel_frame = ttk.Frame(self)
-        self.folder_sel_frame.grid(row=0, sticky=tk.EW)
+        self.folder_sel_frame = ttk.Frame(self.frame)
+        self.folder_sel_frame.grid(row=0, sticky=tk.NSEW)
 
         # Infolder selector
 
-        ttk.Label(self.folder_sel_frame, text="In folder:").grid(row=0, column=0, sticky=tk.E)
+        ttk.Label(self.folder_sel_frame, text="In folder:", anchor=tk.E).grid(
+            row=0,
+            column=0,
+            sticky=tk.NSEW,
+            padx=(GUI_PAD, GUI_PAD / 2),
+            pady=GUI_PAD,
+            )
 
         self.indir_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.__indir)
-        self.indir_entry.grid(row=0, column=1, sticky=tk.NSEW)
+        self.indir_entry.grid(row=0, column=1, sticky=tk.NSEW, padx=GUI_PAD / 2, pady=GUI_PAD)
 
         self.indir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_indir)
-        self.indir_browse_bttn.grid(row=0, column=2, sticky=tk.EW)
+        self.indir_browse_bttn.grid(row=0, column=2, sticky=tk.NSEW, padx=GUI_PAD / 2, pady=GUI_PAD)
         self.lockable_widgets.append(self.indir_browse_bttn)
 
         self.recursive = tk.BooleanVar(self)
         self.recursive_checkbttn = ttk.Checkbutton(self.folder_sel_frame, text="Recursive", variable=self.recursive)
-        self.recursive_checkbttn.grid(row=0, column=3)
+        self.recursive_checkbttn.grid(row=0, column=3, sticky=tk.NSEW, padx=(GUI_PAD / 2, GUI_PAD), pady=GUI_PAD)
         self.lockable_widgets.append(self.recursive_checkbttn)
 
         # Outfolder selector
         self.outdir_to_default()
 
-        ttk.Label(self.folder_sel_frame, text="Out folder:").grid(row=1, column=0, sticky=tk.E)
+        ttk.Label(self.folder_sel_frame, text="Out folder:", anchor=tk.E).grid(
+            row=1,
+            column=0,
+            sticky=tk.NSEW,
+            padx=(GUI_PAD, GUI_PAD / 2),
+            pady=GUI_PAD,
+            )
 
         self.outdir_entry = ttk.Entry(self.folder_sel_frame, textvariable=self.__outdir)
-        self.outdir_entry.grid(row=1, column=1, sticky=tk.NSEW)
+        self.outdir_entry.grid(row=1, column=1, sticky=tk.NSEW, padx=GUI_PAD / 2, pady=GUI_PAD)
 
         self.outdir_browse_bttn = ttk.Button(self.folder_sel_frame, text="Browse", command=self.browse_outdir)
-        self.outdir_browse_bttn.grid(row=1, column=2)
+        self.outdir_browse_bttn.grid(row=1, column=2, sticky=tk.NSEW, padx=GUI_PAD / 2, pady=GUI_PAD)
         self.lockable_widgets.append(self.outdir_browse_bttn)
 
         self.outdir_default_bttn = ttk.Button(self.folder_sel_frame, text="Default", command=self.outdir_to_default)
-        self.outdir_default_bttn.grid(row=1, column=3)
+        self.outdir_default_bttn.grid(row=1, column=3, sticky=tk.NSEW, padx=GUI_PAD / 2, pady=GUI_PAD)
         self.lockable_widgets.append(self.outdir_default_bttn)
 
         self.folder_sel_frame.columnconfigure(1, weight=1)  # Set center column (the one with the fields) to expand sideways)
 
         # --Progress bars--
-        self.folderprogress = ttk.Progressbar(self, orient=tk.HORIZONTAL, length=FOLDERPROGRESS_LEN, mode="determinate")
-        self.folderprogress.grid(row=1, sticky=tk.EW)
+        self.folderprogress = ttk.Progressbar(self.frame, orient=tk.HORIZONTAL, length=FOLDERPROGRESS_LEN, mode="determinate")
+        self.folderprogress.grid(row=1, sticky=tk.EW, padx=GUI_PAD, pady=(GUI_PAD, 0))
 
-        self.fileprogress = ttk.Progressbar(self, orient=tk.HORIZONTAL, length=3, mode="indeterminate")
-        self.fileprogress.grid(row=2, sticky=tk.EW)
+        self.fileprogress = ttk.Progressbar(self.frame, orient=tk.HORIZONTAL, length=3, mode="indeterminate")
+        self.fileprogress.grid(row=2, sticky=tk.EW, padx=GUI_PAD, pady=(0, GUI_PAD))
 
         # --Status display--
-        ttk.Label(self, textvariable=self.__status).grid(row=3)
+        ttk.Label(self.frame, textvariable=self.__status).grid(row=3, padx=GUI_PAD, pady=GUI_PAD)
 
         # --Convert button--
-        self.convert_bttn = ttk.Button(self)  # , text = "Convert", command = self.start_conversion)
+        self.convert_bttn = ttk.Button(self.frame)  # , text = "Convert", command = self.start_conversion)
         self.convert_bttn_modeset(True)
-        self.convert_bttn.grid(row=4, sticky=tk.NSEW)
+        self.convert_bttn.grid(row=4, sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
 
         # --Expansion rules--
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(4, weight=1)
+        self.frame.columnconfigure(0, weight=1)
+        self.frame.rowconfigure(4, weight=1)
+
+        # Lock built size as minimum
+        self.update()
+        self.minsize(self.winfo_width(), self.winfo_height())
 
     def convert_bttn_modeset(self, mode: bool):
         """Set what the convert button does
