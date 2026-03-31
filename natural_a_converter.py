@@ -228,16 +228,24 @@ class MainWindow(tk.Tk):
     def outdir_to_default(self):
         """Default the output folder to a subdirectory of the input folder"""
         self.outdir = op.join(self.indir, OUTFOLDER_DEF)
+    
+    def deepest_valid_path(self, path: str | Path) -> Path:
+        """Filter off invalid branches of a file path"""
+        path = Path(path).absolute()
+        while not path.exists():
+            path = path.parent
+        return path
 
     def browse_indir(self):
         """Browse for input folder"""
-        folder = filedialog.askdirectory(title="Browse for input directory")
+        
+        folder = filedialog.askdirectory(title="Browse for input directory", initialdir=self.deepest_valid_path(self.indir))
         if folder:
             self.indir = folder
 
     def browse_outdir(self):
         """Browse for output folder"""
-        folder = filedialog.askdirectory(title="Browse for output directory")
+        folder = filedialog.askdirectory(title="Browse for output directory", initialdir=self.deepest_valid_path(self.outdir))
         if folder:
             self.outdir = folder
 
