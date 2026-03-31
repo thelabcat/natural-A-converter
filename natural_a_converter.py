@@ -33,15 +33,17 @@ import pydub  # Audio processing
 
 
 # --Absolute variables--
-PITCH_CHANGE = 432 / 440  # Pitch change factor
+NATURAL_A = 432
+STANDARD_A = 440  # Pitch change factor
 
-# The ID3 tag to mark the converted files with
-TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")
+# The ID3 tag to mark the natural tuned files with
+NATURAL_TUNING_TAG = id3.COMM(encoding=0, text="432 Hz", lang="eng", desc="Tuning")
+NATURAL_TUNING_TAG_KEY = "TXXX:" + NATURAL_TUNING_TAG.desc
 
 INFOLDER_DEF = os.getcwd()  # Default input folder
 
 # Default output folder (subfolder of input folder)
-OUTFOLDER_DEF = "natural_A_converted"
+OUTFOLDER_DEF = "pitch_converted"
 
 # Can we handle codecs other than WAV (becomes a str or None)?
 CODEC_HANDLER = shutil.which("ffmpeg") or shutil.which("avconv")
@@ -71,6 +73,8 @@ class MainWindow(tk.Tk):
         self.__indir = tk.StringVar(self, value=INFOLDER_DEF)
         # Variable for output folder path
         self.__outdir = tk.StringVar(self)
+        # Variable for conversion mode
+        self.__convert_to_standard = tk.BooleanVar(self, value=False)
         # The status display
         self.__status = tk.StringVar(self, value="Ready.")
 
@@ -127,7 +131,7 @@ class MainWindow(tk.Tk):
 
         # --Subframe with entry fields for folders, and buttons to browse--
         self.folder_sel_frame = ttk.Frame(self.frame)
-        self.folder_sel_frame.grid(row=0, sticky=tk.NSEW)
+        self.folder_sel_frame.grid(row=0, column=0, columnspan=2, sticky=tk.NSEW)
 
         # Infolder selector
 
@@ -177,22 +181,32 @@ class MainWindow(tk.Tk):
 
         # --Progress bars--
         self.folderprogress = ttk.Progressbar(self.frame, orient=tk.HORIZONTAL, length=FOLDERPROGRESS_LEN, mode="determinate")
-        self.folderprogress.grid(row=1, sticky=tk.EW, padx=GUI_PAD, pady=(GUI_PAD, 0))
+        self.folderprogress.grid(row=1, column=0, columnspan=2, sticky=tk.EW, padx=GUI_PAD, pady=(GUI_PAD, 0))
 
         self.fileprogress = ttk.Progressbar(self.frame, orient=tk.HORIZONTAL, length=3, mode="indeterminate")
-        self.fileprogress.grid(row=2, sticky=tk.EW, padx=GUI_PAD, pady=(0, GUI_PAD))
+        self.fileprogress.grid(row=2, column=0, columnspan=2, sticky=tk.EW, padx=GUI_PAD, pady=(0, GUI_PAD))
+
+        # --Conversion mode select--
+        r1 = ttk.Radiobutton(self.frame, text="To Natural A", value=False, variable=self.__convert_to_standard)
+        r1.grid(row=4, column=0, sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
+        r2 = ttk.Radiobutton(self.frame, text="To Standard A", value=True, variable=self.__convert_to_standard)
+        r2.grid(row=4, column=1, sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
+        self.lockable_widgets += [r1, r2]
+        
 
         # --Status display--
-        ttk.Label(self.frame, textvariable=self.__status).grid(row=3, padx=GUI_PAD, pady=GUI_PAD)
+        ttk.Label(self.frame, textvariable=self.__status).grid(row=3, column=0, columnspan=2, padx=GUI_PAD, pady=GUI_PAD)
 
         # --Convert button--
         self.convert_bttn = ttk.Button(self.frame)  # , text = "Convert", command = self.start_conversion)
         self.convert_bttn_modeset(True)
-        self.convert_bttn.grid(row=4, sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
+        self.convert_bttn.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, padx=GUI_PAD, pady=GUI_PAD)
 
         # --Expansion rules--
         self.frame.columnconfigure(0, weight=1)
+        self.frame.columnconfigure(1, weight=1)
         self.frame.rowconfigure(4, weight=1)
+        self.frame.rowconfigure(5, weight=1)
 
         # Lock built size as minimum
         self.update()
@@ -268,7 +282,7 @@ class MainWindow(tk.Tk):
         self.fileprogress.start()
 
         # Start the new thread
-        self.converter = FileConverter(self, self.indir, self.outdir, self.recursive.get())
+        self.converter = FileConverter(self, self.indir, self.outdir, self.recursive.get(), self.__convert_to_standard.get())
         self.converter.start()
 
         # Wait for it to finish, then reconfigure the GUI
@@ -368,19 +382,25 @@ class MainWindow(tk.Tk):
 class FileConverter(threading.Thread):
     """Convert a list of files to the outdir, and update the gui"""
 
-    def __init__(self, gui: MainWindow, indir: Path, outdir: Path, recursive: bool):
+    def __init__(self, gui: MainWindow, indir: Path, outdir: Path, recursive: bool, to_standard: bool):
         """Convert a list of files to the outdir, and update the gui.
 
         Args:
             gui (MainWindow): The parent GUI.
             indir (Path): The input directory.
-            outdir (Path): The output directory."""
+            outdir (Path): The output directory.
+            recursive (bool): Whether to search subfolders.
+            to_standard (bool): Reverse the conversion direction?"""
 
         super().__init__(daemon=True)
         self.gui = gui
         self.indir = indir
         self.outdir = outdir
         self.recursive = recursive
+        self.to_standard = to_standard
+        self.ratio = NATURAL_A / STANDARD_A
+        if self.to_standard:
+            self.ratio **= -1
 
         self.cancel = False
         self.fails = 0
@@ -445,7 +465,9 @@ class FileConverter(threading.Thread):
         self.gui.status_updates.put(f"Loading `{debugname}`...")
         music = pydub.AudioSegment.from_file(inname)
         oldtags = mutagen.File(inname)
-        if TUNING_TAG in oldtags.values():
+        
+        # Does nothing if the tag is missing, but we are converting to standard
+        if NATURAL_TUNING_TAG_KEY in oldtags and not self.to_standard:
             print(f"Tags of `{inname}` say it is already converted.")
             self.skips += 1
             return
@@ -453,7 +475,7 @@ class FileConverter(threading.Thread):
         if self.cancel:
             return
         self.gui.status_updates.put(f"Changing speed of `{debugname}`...")
-        music.frame_rate *= PITCH_CHANGE
+        music.frame_rate *= self.ratio
 
         if self.cancel:
             return
@@ -464,7 +486,10 @@ class FileConverter(threading.Thread):
         self.gui.status_updates.put(f"Setting ID3 tags of `{debugname}`...")
         newtags = mutagen.File(outname)
         newtags.tags = oldtags.tags
-        newtags.tags.add(TUNING_TAG)
+        if self.to_standard and NATURAL_TUNING_TAG_KEY in oldtags:
+            newtags.tags.pop(NATURAL_TUNING_TAG_KEY)
+        elif not self.to_standard:
+            newtags.tags.add(NATURAL_TUNING_TAG)
         newtags.save()
 
         # Converting the file is finished
